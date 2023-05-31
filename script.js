@@ -3,17 +3,19 @@ const svg = d3.select("#map")
   .append("svg")
   .attr("width", "100%")
   .attr("height", "100%")
+  .style("background-color", "#333");
 
 // Create a group to contain the map elements
 const mapGroup = svg.append("g");
 
 // Create a zoom behavior
 const zoom = d3.zoom()
-  .scaleExtent([1, 16]) // Adjust the scale extent for more zooming
+  .scaleExtent([1, 50]) // Adjust the scale extent for more zooming
   .on("zoom", zoomed);
 
 // Attach the zoom behavior to the SVG container
 svg.call(zoom);
+
 
 // Create a drag behavior
 const drag = d3.drag()
@@ -29,18 +31,48 @@ let currentTransform = d3.zoomIdentity;
 let currentScale = 1;
 
 // Function to handle zooming
-// Function to handle zooming
 function zoomed(event) {
-    currentTransform = event.transform;
-    currentScale = event.transform.k;
-  
-    // Adjust the radius of the circles based on the current scale
-    const radius = 5 / currentScale;
-  
-    mapGroup.attr("transform", currentTransform);
+  currentTransform = event.transform;
+  currentScale = event.transform.k;
+
+  // Adjust the radius and opacity of the circles based on the current scale
+  const radius = 10 / currentScale;
+  const opacity = currentScale <= 6 ? 0.5 : 0.3;
+
+  mapGroup.attr("transform", currentTransform);
+
+  if (currentScale <= 6) {
+    mapGroup.selectAll("circle")
+      .attr("r", function(d) {
+        if (+d3.select(this).attr("data-magnitude") >= 8) {
+          return radius;
+        } else {
+          return 0;
+        }
+      });    
+  } else if (currentScale <= 9) {
+    mapGroup.selectAll("circle")
+      .attr("r", function(d) {
+        if (+d3.select(this).attr("data-magnitude") >= 7) {
+          return radius;
+        } else {
+          return 0;
+        }
+      });
+  } else if (currentScale <= 16) {
+    mapGroup.selectAll("circle")
+      .attr("r", function(d) {
+        if (+d3.select(this).attr("data-magnitude") >= 7) {
+          return radius;
+        } else {
+          return 0;
+        }
+      });
+  } else {
     mapGroup.selectAll("circle")
       .attr("r", radius);
   }
+}
 
 // Function to handle drag start
 function dragStarted(event) {
@@ -90,9 +122,13 @@ d3.json("world.json").then(function (data) {
     .data(countries.features)
     .enter()
     .append("path")
-    .attr("d", path);
+    .attr("d", path)
+    .style("fill", function(d) {
+      // Set the color based on the geometry type
+      return d.geometry.type === "Polygon" || d.geometry.type === "MultiPolygon" ? "black" : "lightblue";
+    });
 
-      // Load the CSV data
+  // Load the CSV data
   d3.csv("earthquake_data.csv").then(function (csvData) {
     // Process each data point
     csvData.forEach(function (d) {
@@ -103,8 +139,8 @@ d3.json("world.json").then(function (data) {
       // Convert longitude and latitude to coordinates on the map
       const coordinates = projection([longitude, latitude]);
 
-    // Function to map magnitude value to color
-    function getColor(magnitudeValue) {
+      // Function to map magnitude value to color
+      function getColor(magnitudeValue) {
         if (magnitudeValue < 7) {
           return "green";   // Set color to green for magnitude less than 6
         } else if (magnitudeValue >= 7 && magnitudeValue < 8) {
@@ -118,16 +154,78 @@ d3.json("world.json").then(function (data) {
         }
       }
 
+      // Function to handle mouseover event
+      function circleMouseOver() {
+        const radius = 12 / currentScale;
+        const opacity = currentScale <= 6 ? 1 : 0.7;
+
+        d3.select(this)
+          .transition()
+          .duration(200)
+          .attr("r", radius)
+          .style("opacity", opacity);
+      }
+
+      // Function to handle mouseout event
+      function circleMouseOut() {
+        const radius = 10 / currentScale;
+        const opacity = currentScale <= 6 ? 0.5 : 0.3;
+
+        d3.select(this)
+          .transition()
+          .duration(200)
+          .attr("r", radius)
+          .style("opacity", opacity);
+      }
+
+      function circleClick() {
+        const magnitudeValue = +d3.select(this).attr("data-magnitude");
+        const location = d.location;
+        const time = d.date_time;
+        const tsunami = d.tsunami;
+        const magType = d.magType;
+        const depth = d.depth;
+        const latitude  = d.latitude ;
+        const longitude = d.longitude;
+        const popup = d3.select("#popup");
+      
+        // Show the pop-up
+        popup.style("display", "block");
+      
+        popup.html(
+          "<div class='popup-content'>" +
+          "<h3>Earthquake Information</h3>" +
+          "<p><strong>Magnitude:</strong> " + magnitudeValue + "</p>" +
+          "<p><strong>Location:</strong> " + location + "</p>" +
+          "<p><strong>Location:</strong> " + time + "</p>" +
+          "<p><strong>Tsunami:</strong> " + tsunami + "</p>" +
+          "<p><strong>Method used to calculate the preferred magnitude for the event:</strong> " + magType + "</p>" +
+          "<p><strong>Depth:</strong> " + depth + "</p>" +
+          "<p><strong>Latitude:</strong> " + latitude + "</p>" +
+          "<p><strong>Longitude:</strong> " + longitude + "</p>" +
+          "<button type='button' class='btn-close' aria-label='Close'></button>" +
+          "</div>"
+        );
+        popup.select(".btn-close").on("click", closePopup);
+      }
+      // Function to handle close button click
+      function closePopup() {
+        const popup = d3.select("#popup");
+        popup.html(""); // Remove the HTML content of the pop-up
+        popup.style("display", "none");
+      }
+
       // Append a circle for each data point
       mapGroup.append("circle")
         .attr("cx", coordinates[0])
         .attr("cy", coordinates[1])
-        .attr("r", 5)
+        .attr("r", 10 / currentScale)
+        .attr("data-magnitude", magnitude) // Add data-magnitude attribute
         .style("fill", getColor(magnitude))
-        .style("opacity", "0.5");  
+        .style("opacity", currentScale <= 6 ? 0.5 : 0.3)
+        .on("mouseover", circleMouseOver) // Add mouseover event listener
+        .on("mouseout", circleMouseOut) // Add mouseout event listener
+        .on("click", circleClick); // Add click event listener
     });
   });
 });
-
-
-
